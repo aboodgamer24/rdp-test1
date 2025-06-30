@@ -6,11 +6,15 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Download ngrok
+      - name: Download and extract ngrok
         run: |
           Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip
-          ./ngrok.exe authtoken 2zEnRi4uuTeYLALDrkgYdmoIKUV_FKwg1ESLpLoC9BAZhs5L
+          Expand-Archive ngrok.zip -DestinationPath $PWD
+          ls  # Optional: List files to confirm ngrok.exe is present
+
+      - name: Configure ngrok auth token
+        run: |
+          .\ngrok.exe authtoken 2zEnRi4uuTeYLALDrkgYdmoIKUV_FKwg1ESLpLoC9BAZhs5L
 
       - name: Enable RDP
         run: |
@@ -18,4 +22,4 @@ jobs:
           net localgroup administrators abood /add
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          ./ngrok.exe tcp 3389
+          .\ngrok.exe tcp 3389
