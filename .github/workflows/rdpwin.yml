@@ -5,12 +5,13 @@ on: [workflow_dispatch]
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 360  # Set explicit timeout (6 hours max)
     steps:
       - name: Download and extract ngrok
         run: |
           Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
           Expand-Archive ngrok.zip -DestinationPath $PWD
-          ls  # Optional: List files to confirm ngrok.exe is present
+          ls
 
       - name: Configure ngrok auth token
         run: |
@@ -22,4 +23,32 @@ jobs:
           net localgroup administrators kame23 /add
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          .\ngrok.exe tcp 3389
+
+      - name: Start ngrok tunnel
+        run: |
+          # Start ngrok in background
+          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp", "3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+          
+          # Get the tunnel URL
+          try {
+            $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -Method Get
+            $tunnel = $response.tunnels | Where-Object { $_.proto -eq "tcp" }
+            if ($tunnel) {
+              Write-Host "RDP Tunnel URL: $($tunnel.public_url)"
+              Write-Host "Connect using: $($tunnel.public_url -replace 'tcp://', '')"
+            }
+          } catch {
+            Write-Host "Could not retrieve tunnel information"
+          }
+
+      - name: Keep session alive
+        run: |
+          Write-Host "RDP session is ready. This step will keep the workflow running."
+          Write-Host "The workflow will timeout after 6 hours or when manually cancelled."
+          
+          # Keep the session alive
+          while ($true) {
+            Start-Sleep -Seconds 60
+            Write-Host "Session active at $(Get-Date)"
+          }
