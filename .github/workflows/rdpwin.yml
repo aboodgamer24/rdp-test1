@@ -23,7 +23,7 @@ jobs:
           
           # Configure firewall
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Force
+          New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
           
           # Start Terminal Service
           Set-Service -Name "TermService" -StartupType Automatic
