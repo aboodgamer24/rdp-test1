@@ -20,48 +20,29 @@ jobs:
           Set-Service -Name "TermService" -StartupType Automatic
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
-      - name: Create tunnel config
-        run: |
-          @"
-          tunnel: 64f30b0b-64cf-40fd-88d5-ac86509c0aed
-          credentials-file: /path/to/credentials.json
-          
-          ingress:
-            - hostname: rdp.aboodi24.com
-              service: tcp://localhost:3389
-            - service: http_status:404
-          "@ | Out-File -FilePath config.yml
-      
-      - name: Start Cloudflare Tunnel
-        run: |
-          .\cloudflared.exe tunnel --config config.yml run
 
       - name: Start Cloudflare Tunnel
         env:
           TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
         run: |
-          # Start tunnel with token
-          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log
+          # Start tunnel with token (no config file needed!)
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log -RedirectStandardError tunnel_error.log
           
-          Start-Sleep -Seconds 15
+          Start-Sleep -Seconds 20
           
           Write-Host "=========================================="
           Write-Host "Cloudflare Tunnel Started!"
-          Write-Host "=========================================="
-          Write-Host "Connect to your configured hostname"
+          Write-Host "Connect to: rdp.aboodi24.com"
           Write-Host "Username: kame23"
           Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
           
-          Get-Content tunnel.log
+          Get-Content tunnel.log -ErrorAction SilentlyContinue
+          Get-Content tunnel_error.log -ErrorAction SilentlyContinue
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
             Write-Host "Session active: $(Get-Date)"
-            if (-not (Get-Process cloudflared -ErrorAction SilentlyContinue)) {
-              Write-Host "Restarting tunnel..."
-              Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "run", "--token", "$env:CLOUDFLARE_TUNNEL_TOKEN" -NoNewWindow
-            }
           }
