@@ -21,12 +21,26 @@ jobs:
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
 
+      - name: Create tunnel config
+        run: |
+          @"
+          tunnel: 64f30b0b-64cf-40fd-88d5-ac86509c0aed
+          
+          ingress:
+            - hostname: rdp.aboodi24.com
+              service: tcp://localhost:3389
+            - service: http_status:404
+          "@ | Out-File -FilePath config.yml -Encoding UTF8
+          
+          Write-Host "Config created:"
+          Get-Content config.yml
+
       - name: Start Cloudflare Tunnel
         env:
           TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
         run: |
-          # Start tunnel with token (no config file needed!)
-          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log -RedirectStandardError tunnel_error.log
+          # Use token method but config forces TCP
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--config", "config.yml", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log -RedirectStandardError tunnel_error.log
           
           Start-Sleep -Seconds 20
           
@@ -37,8 +51,8 @@ jobs:
           Write-Host "Password: S5316875844@a"
           Write-Host "=========================================="
           
-          Get-Content tunnel.log -ErrorAction SilentlyContinue
-          Get-Content tunnel_error.log -ErrorAction SilentlyContinue
+          if (Test-Path tunnel.log) { Get-Content tunnel.log }
+          if (Test-Path tunnel_error.log) { Get-Content tunnel_error.log }
 
       - name: Keep alive
         run: |
