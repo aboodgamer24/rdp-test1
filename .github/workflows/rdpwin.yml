@@ -1,4 +1,4 @@
-name: RDP
+name: RDP with Cloudflare Tunnel
 
 on: [workflow_dispatch]
 
@@ -7,114 +7,46 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
-      - name: Download ngrok
+      - name: Download Cloudflared
         run: |
-          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath $PWD
+          Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
       - name: Setup RDP
         run: |
-          # Create user
           net user kame23 S5316875844@a /add
           net localgroup administrators kame23 /add
-          
-          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
-          
-          # Configure firewall
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
-          
-          # Start Terminal Service
           Set-Service -Name "TermService" -StartupType Automatic
           Start-Service -Name "TermService"
-          
-          # Wait for service to start
           Start-Sleep -Seconds 10
 
-      - name: Start ngrok
+      - name: Start Cloudflare Tunnel
+        env:
+          TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
         run: |
-          # Configure ngrok
-          .\ngrok.exe authtoken 2zEnRi4uuTeYLALDrkgYdmoIKUV_FKwg1ESLpLoC9BAZhs5L
+          # Start tunnel with token
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "--no-autoupdate", "run", "--token", "$env:TUNNEL_TOKEN" -NoNewWindow -RedirectStandardOutput tunnel.log
           
-          # Start ngrok
-          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp", "3389", "--log=stdout" -WindowStyle Hidden
+          Start-Sleep -Seconds 15
           
-          # Wait and get tunnel info
-          Start-Sleep -Seconds 20
+          Write-Host "=========================================="
+          Write-Host "Cloudflare Tunnel Started!"
+          Write-Host "=========================================="
+          Write-Host "Connect to your configured hostname"
+          Write-Host "Username: kame23"
+          Write-Host "Password: S5316875844@a"
+          Write-Host "=========================================="
           
-          for ($i = 1; $i -le 10; $i++) {
-            try {
-              $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
-              if ($response.tunnels) {
-                $tunnel = $response.tunnels[0]
-                Write-Host "SUCCESS! RDP Tunnel: $($tunnel.public_url)"
-                Write-Host "Connect with: $($tunnel.public_url -replace 'tcp://', '')"
-                Write-Host "Username: kame23 | Password: S5316875844@a"
-                break
-              }
-            } catch {
-              Write-Host "Attempt $i failed, retrying..."
-              Start-Sleep -Seconds 5
-            }
-          }
-
-      - name: Verify RDP setup
-        run: |
-          # Check if RDP is enabled
-          $rdpEnabled = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections'
-          Write-Host "RDP Enabled: $($rdpEnabled.fDenyTSConnections -eq 0)"
-          
-          # Check if user exists
-          try {
-            $user = Get-LocalUser -Name "kame23"
-            Write-Host "User kame23 exists: $($user.Enabled)"
-          } catch {
-            Write-Host "User kame23 not found!"
-          }
-          
-          # Check if port 3389 is listening
-          $listening = netstat -an | findstr ":3389.*LISTENING"
-          if ($listening) {
-            Write-Host "Port 3389 is listening"
-          } else {
-            Write-Host "Port 3389 is NOT listening!"
-            # Try to start Terminal Services
-            Start-Service -Name "TermService" -ErrorAction SilentlyContinue
-          }
-
-      - name: Troubleshoot
-        run: |
-          Write-Host "=== TROUBLESHOOTING INFO ==="
-          
-          # Check ngrok process
-          Write-Host "Ngrok processes:"
-          Get-Process | Where-Object { $_.ProcessName -like "*ngrok*" } | Format-Table
-          
-          # Check ngrok logs
-          Write-Host "Checking ngrok web interface..."
-          try {
-            $webResponse = Invoke-WebRequest -Uri "http://localhost:4040" -TimeoutSec 5
-            Write-Host "Ngrok web interface is accessible"
-          } catch {
-            Write-Host "Cannot access ngrok web interface: $($_.Exception.Message)"
-          }
-          
-          # Check network connections
-          Write-Host "Network connections on port 3389:"
-          netstat -an | findstr :3389
-          
-          # Check Windows Firewall
-          Write-Host "Firewall rules for Remote Desktop:"
-          Get-NetFirewallRule -DisplayGroup "Remote Desktop" | Where-Object { $_.Enabled -eq 'True' } | Format-Table DisplayName, Enabled
-          
-          # Check Terminal Services
-          Write-Host "Terminal Services status:"
-          Get-Service -Name "TermService" | Format-Table
+          Get-Content tunnel.log
 
       - name: Keep alive
         run: |
           while ($true) {
             Start-Sleep -Seconds 300
             Write-Host "Session active: $(Get-Date)"
+            if (-not (Get-Process cloudflared -ErrorAction SilentlyContinue)) {
+              Write-Host "Restarting tunnel..."
+              Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel", "run", "--token", "$env:CLOUDFLARE_TUNNEL_TOKEN" -NoNewWindow
+            }
           }
