@@ -20,6 +20,21 @@ jobs:
           Set-Service -Name "TermService" -StartupType Automatic
           Start-Service -Name "TermService"
           Start-Sleep -Seconds 10
+      - name: Create tunnel config
+        run: |
+          @"
+          tunnel: 64f30b0b-64cf-40fd-88d5-ac86509c0aed
+          credentials-file: /path/to/credentials.json
+          
+          ingress:
+            - hostname: rdp.aboodi24.com
+              service: tcp://localhost:3389
+            - service: http_status:404
+          "@ | Out-File -FilePath config.yml
+      
+      - name: Start Cloudflare Tunnel
+        run: |
+          .\cloudflared.exe tunnel --config config.yml run
 
       - name: Start Cloudflare Tunnel
         env:
